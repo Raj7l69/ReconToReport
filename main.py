@@ -56,7 +56,8 @@ def run_pipeline_for_target(target, args, checkpoint: CheckpointManager):
     # Stage 1: Nmap scan
     if state.get("stage", 0) < 1:
         log.info(f"[{target}] Stage 1: Running nmap scan (profile={args.profile})")
-        xml_path = run_nmap_scan(target, outdir, profile=args.profile)
+        xml_path = run_nmap_scan(target, outdir, profile=args.profile,
+                                  extra_args=args.nmap_args, interactive=not args.no_prompt)
         checkpoint.save(target, stage=1, data={"xml_path": str(xml_path)})
     else:
         xml_path = Path(state["data"]["xml_path"])
@@ -111,6 +112,11 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Resume from last checkpoint if available")
     parser.add_argument("--webhook", help="Slack/Discord webhook URL for completion notification")
     parser.add_argument("--nvd-api-key", help="NVD API key (optional — raises rate limit from 5/30s to ~50/30s)")
+    parser.add_argument("--nmap-args", help="Extra raw nmap flags, e.g. '-Pn -sS --script vuln'. "
+                                             "Skips the interactive options prompt when set.")
+    parser.add_argument("--no-prompt", action="store_true",
+                         help="Skip the interactive extra-nmap-options prompt (base profile only). "
+                              "Use for unattended/scripted runs.")
     args = parser.parse_args()
 
     targets = load_targets(args)
