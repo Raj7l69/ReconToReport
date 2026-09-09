@@ -6,7 +6,6 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![NVD](https://img.shields.io/badge/CVE%20Data-Live%20NVD%20API-red?style=for-the-badge&logo=hackthebox&logoColor=white)]()
-[![Focus](https://img.shields.io/badge/Focus-Offensive%20Security-critical?style=for-the-badge&logo=shieldsdotio&logoColor=white)]()
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)]()
 
 </div>
@@ -50,39 +49,26 @@ ReconToReport was built to close that gap: one pipeline that scans, enumerates b
 
 <br>
 
-## ⚡ Capabilities at a Glance
+## ⚡ Full Feature List
 
-<table>
-<tr>
-<td width="33%" valign="top">
+**Core Pipeline**
 
-### 🔎 Reconnaissance
-- Nmap-driven port + service discovery
-- Quick and full scan profiles
-- Multi-target: single IP, CIDR range, or a target list
-- Checkpoint-based resume for interrupted scans
+1. 🔍 **Nmap scanning** — fast and full profiles, with service/version detection
+2. 🧭 **Service-based auto enumeration** — HTTP, SMB, FTP, SSH, and DNS each handled by a dedicated module
+3. 🛡️ **CVE correlation** — live NVD database lookup + searchsploit cross-check
+4. 🕷️ **Web probing** — directory brute-forcing plus basic OWASP-style SQLi/XSS checks
+5. 📄 **Automated report generation** — every finding compiled into a structured, shareable report
 
-</td>
-<td width="33%" valign="top">
+**Enhancements**
 
-### 🛡️ Vulnerability Intelligence
-- Live NVD API — real CVE IDs and CVSS scores
-- searchsploit exploit-availability cross-check
-- Severity ranking with zero guesswork
-- Findings sorted worst-first automatically
-
-</td>
-<td width="33%" valign="top">
-
-### 📄 Evidence & Reporting
-- Automated screenshot capture
-- Markdown / JSON / PDF export
-- Slack/Discord completion webhook
-- Clean, structured, shareable output
-
-</td>
-</tr>
-</table>
+6. 🎯 **Multi-target support** — single IP, IP range, or a `targets.txt` list
+7. 📸 **Automatic screenshot capture** — visual evidence of discovered web services
+8. 📊 **Risk scoring** — CVSS-based Critical / High / Medium / Low severity ranking
+9. ⏸️ **Resume / checkpoint** — interrupted scans continue instead of restarting
+10. ⚙️ **Scan profiles** — `--quick` for speed, `--full` for depth
+11. 📚 **Custom wordlist support** — bring your own brute-force lists
+12. 🗂️ **Multi-format export** — PDF, JSON, and Markdown reports
+13. 🔔 **Webhook notifications** — Slack/Discord alert when a scan completes
 
 <br>
 
