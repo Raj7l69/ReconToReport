@@ -2,186 +2,146 @@
 
 # 🎯 ReconToReport
 
-### Automated Recon-to-Report Pentesting Pipeline
+### An Automated Offensive Security Pipeline — Recon, Vulnerability Intelligence & Reporting in One Run
 
-**One command. Full recon, service enumeration, real CVE correlation, and a client-ready report.**
-
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](#license)
-[![Status](https://img.shields.io/badge/Status-Active%20Development-yellow?style=flat-square)]()
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)]()
-[![Made for](https://img.shields.io/badge/Made%20for-CTFs%20%26%20VAPT-red?style=flat-square)]()
-
-*Stop chaining nmap → gobuster → searchsploit → manual-CVE-lookup → Word doc by hand.*
-*Point ReconToReport at a target and get all of it, correlated and reported, automatically.*
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![NVD](https://img.shields.io/badge/CVE%20Data-Live%20NVD%20API-red?style=for-the-badge&logo=hackthebox&logoColor=white)]()
+[![Focus](https://img.shields.io/badge/Focus-Offensive%20Security-critical?style=for-the-badge&logo=shieldsdotio&logoColor=white)]()
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)]()
 
 </div>
 
----
+<br>
 
-## 📌 Why This Exists
+<p align="center">
+<i>A pentest engagement starts the same way every time — scan, enumerate, look up CVEs, screenshot evidence, write it all up. That whole chain, run by hand, eats hours before the actual assessment even begins.</i><br><br>
+<b>ReconToReport collapses that chain into one command</b> — target in, evidence-backed report out.
+</p>
 
-Most recon tools stop at "here's what's open." **ReconToReport goes further** — it tells you what's actually *exploitable*, how severe it is according to real CVSS data, and hands you a report you can drop straight into a client deliverable or a CTF writeup.
-
-| | AutoRecon | FinalRecon | **ReconToReport** |
-|---|:---:|:---:|:---:|
-| Network + service enum | ✅ | ⚠️ (web-only) | ✅ |
-| Real CVE + CVSS correlation (NVD) | ❌ | ❌ | ✅ |
-| Risk-scored findings | ❌ | ❌ | ✅ |
-| Basic OWASP (SQLi/XSS) probing | ❌ | ❌ | ✅ |
-| Auto-generated PDF/MD/JSON report | ❌ | ❌ | ✅ |
-| Resume interrupted scans | ❌ | ❌ | ✅ |
+<br>
 
 ---
 
-## ⚡ Features
+## 🧠 The Idea Behind It
+
+Reconnaissance tooling generally does one of two things well: either it's a **fast scanner** that tells you what's open, or it's a **deep enumerator** that digs into individual services. What's usually missing is the layer that actually matters to a pentester under time pressure — **turning raw scan output into ranked, evidence-backed findings** without touching ten separate tools by hand.
+
+ReconToReport was built to close that gap: one pipeline that scans, enumerates by service type, cross-references *live* CVE data, scores risk by real CVSS numbers, and writes the report — so the engineering effort goes into interpreting findings, not assembling them.
+
+<br>
+
+## 🔬 How the Pipeline Works
+
+```
+   🎯                🔍                  🧭                    🛡️                   📄
+ TARGET   ──────▶   NMAP SCAN   ──────▶  SERVICE-AWARE   ──────▶  NVD CVE       ──────▶  REPORT
+ (IP/Domain)        (quick/full)         ENUMERATION            CORRELATION            (MD/JSON/PDF)
+                                          per service type       + CVSS scoring
+```
+
+| Stage | What Happens |
+|---|---|
+| **1️⃣ Discovery** | Nmap identifies live hosts, open ports, and running services with version fingerprinting. Two speed profiles — `quick` for a fast top-port sweep, `full` for an exhaustive all-port pass with OS detection. |
+| **2️⃣ Service-Aware Enumeration** | Each detected service triggers its own specialist module instead of a one-size-fits-all scan — HTTP gets directory brute-forcing and tech fingerprinting, SMB gets share/user enumeration, SSH gets a configuration audit, and domain targets get DNS record and zone-transfer checks. |
+| **3️⃣ Vulnerability Correlation** | Every service/version pair is queried live against the **NVD database** — real CVE IDs, real descriptions, real CVSS base scores. A parallel searchsploit check flags anything with a known public exploit. |
+| **4️⃣ Risk Scoring** | Findings are ranked Critical → High → Medium → Low, driven strictly by the actual CVSS score returned — not a keyword heuristic guessing at severity. |
+| **5️⃣ Web Probing** | Discovered web endpoints get lightweight OWASP-style checks — error-based SQLi signatures and reflected-XSS detection — flagging candidates worth a closer manual look. |
+| **6️⃣ Reporting** | Every finding, screenshot, and enumeration artifact is compiled into a structured report — Markdown for quick review, JSON for programmatic use, PDF for handing off. |
+
+<br>
+
+## ⚡ Capabilities at a Glance
 
 <table>
 <tr>
-<td width="50%">
+<td width="33%" valign="top">
 
-**🔍 Recon & Enumeration**
-- Nmap-powered scan (`quick` / `full` profiles)
-- Auto-dispatches per detected service:
-  - `HTTP/S` → gobuster + whatweb + OWASP probes
-  - `SMB` → enum4linux-ng
-  - `FTP` → anonymous login check
-  - `SSH` → banner + ssh-audit
-  - Domains → DNS records + zone-transfer check
+### 🔎 Reconnaissance
+- Nmap-driven port + service discovery
+- Quick and full scan profiles
+- Multi-target: single IP, CIDR range, or a target list
+- Checkpoint-based resume for interrupted scans
 
 </td>
-<td width="50%">
+<td width="33%" valign="top">
 
-**🛡️ Vulnerability Intelligence**
-- Live **NVD API** lookup — real CVEs, real CVSS scores
-- searchsploit cross-reference for public PoCs
-- Severity ranked strictly by CVSS (no guessing)
+### 🛡️ Vulnerability Intelligence
+- Live NVD API — real CVE IDs and CVSS scores
+- searchsploit exploit-availability cross-check
+- Severity ranking with zero guesswork
 - Findings sorted worst-first automatically
 
 </td>
-</tr>
-<tr>
-<td width="50%">
+<td width="33%" valign="top">
 
-**📊 Reporting**
-- Markdown, JSON, and PDF export
-- Screenshot capture of live web services
-- Clean, client-shareable output
-
-</td>
-<td width="50%">
-
-**⚙️ Built for Real Workflows**
-- Multi-target (`IP`, `CIDR`, or `targets.txt`)
-- Resume/checkpoint on interrupted scans
-- Slack/Discord webhook on completion
-- Custom wordlist support
+### 📄 Evidence & Reporting
+- Automated screenshot capture
+- Markdown / JSON / PDF export
+- Slack/Discord completion webhook
+- Clean, structured, shareable output
 
 </td>
 </tr>
 </table>
 
----
+<br>
 
-## 🚀 Quick Start
+## 🧭 Service-Specific Enumeration
 
-```bash
-git clone https://github.com/Raj7l69/ReconToReport.git
-cd ReconToReport
-pip3 install -r requirements.txt --break-system-packages
-```
+<table>
+<tr><td width="15%" align="center"><b>🌐 HTTP/S</b></td><td>Directory brute-forcing (gobuster), technology fingerprinting (whatweb), lightweight SQLi/XSS reflection probing</td></tr>
+<tr><td align="center"><b>🗂️ SMB</b></td><td>Share and user enumeration via enum4linux-ng</td></tr>
+<tr><td align="center"><b>📁 FTP</b></td><td>Anonymous login testing and banner grabbing</td></tr>
+<tr><td align="center"><b>🔑 SSH</b></td><td>Banner capture plus algorithm/configuration audit via ssh-audit</td></tr>
+<tr><td align="center"><b>🌍 DNS</b></td><td>Full record enumeration (A/AAAA/MX/NS/TXT/SOA/CNAME) and zone-transfer (AXFR) misconfiguration testing</td></tr>
+</table>
 
-<details>
-<summary><b>📦 External tools (click to expand)</b></summary>
+<br>
 
-```bash
-sudo apt install nmap gobuster whatweb smbclient exploitdb dnsutils -y
+## 🏗️ Engineering Notes
 
-# enum4linux-ng
-git clone https://github.com/cddmp/enum4linux-ng.git
+- **Modular dispatch architecture** — the enumeration layer routes purely on detected service name, so adding a new service handler means dropping in one new module, not touching the core pipeline.
+- **Real-time CVE correlation, not a static ruleset** — every scan queries NVD live, so findings reflect the current vulnerability database rather than a bundled snapshot that goes stale.
+- **State-aware execution** — scan progress is checkpointed per target, so a long multi-host run surviving a network drop or a `Ctrl+C` doesn't mean starting over.
+- **Structured output by design** — every module returns typed dict/JSON output rather than raw text, which is what makes automated report generation possible instead of manual copy-pasting.
 
-# ssh-audit
-pip3 install ssh-audit --break-system-packages
+<br>
 
-# gowitness (optional — needed only for --screenshot)
-go install github.com/sensepost/gowitness@latest
-```
+## 🛠️ Built With
 
-**NVD API key (recommended):** without one, CVE lookups are rate-limited to 5 req/30s. Get a free key at [nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key) and pass it with `--nvd-api-key`.
+`Python 3` · `Nmap` · `Gobuster` · `WhatWeb` · `enum4linux-ng` · `ssh-audit` · `dig` · `NVD REST API` · `searchsploit` · `gowitness`
 
-</details>
+<br>
 
-### Run it
-
-```bash
-# Basic scan
-python3 main.py --target 10.10.10.5
-
-# Full aggressive scan, screenshots, all export formats
-python3 main.py --target 10.10.10.5 --profile full --screenshot --export pdf md json
-
-# Multiple targets
-python3 main.py --target-file targets.txt
-
-# Resume an interrupted scan
-python3 main.py --target 10.10.10.5 --resume
-
-# Get pinged on Slack/Discord when it's done
-python3 main.py --target 10.10.10.5 --webhook https://hooks.slack.com/services/XXX
-```
-
-<details>
-<summary><b>⚙️ Full options reference</b></summary>
-
-| Flag | Description |
-|------|-------------|
-| `--target` | Single IP, CIDR, or domain |
-| `--target-file` | File with one target per line |
-| `--profile` | `quick` (default) or `full` |
-| `--wordlist` | Directory brute-force wordlist (swap in [SecLists](https://github.com/danielmiessler/SecLists) for real engagements) |
-| `--export` | Any of `md`, `json`, `pdf` |
-| `--screenshot` | Capture screenshots of discovered web services |
-| `--resume` | Resume from last checkpoint |
-| `--webhook` | Slack/Discord webhook URL |
-| `--nvd-api-key` | Raise the NVD CVE-lookup rate limit |
-
-</details>
-
----
-
-## 🗂️ Project Structure
+## 🗂️ Structure
 
 ```
 ReconToReport/
-├── core/            → nmap scanning, service parsing, enum dispatch
-├── modules/          → web / SMB / FTP / SSH / DNS enumeration
-├── vuln/             → NVD CVE + CVSS correlation, searchsploit matching
-├── report/           → Markdown / JSON / PDF report builder
-├── utils/            → checkpoint (resume), webhook notifier, logger
-├── wordlists/        → sample wordlist (swap for SecLists in real use)
-└── main.py           → orchestrator
+├── 🔎 core/         nmap scanning, service parsing, enumeration dispatch
+├── 🧭 modules/       web / SMB / FTP / SSH / DNS enumeration handlers
+├── 🛡️ vuln/          NVD CVE + CVSS correlation, searchsploit matching
+├── 📄 report/        Markdown / JSON / PDF report builder
+├── ⚙️ utils/          checkpoint/resume, webhook notifier, logger
+├── 📚 wordlists/     directory brute-force wordlists
+└── 🎯 main.py         pipeline orchestrator
 ```
 
----
-
-## 🧭 Roadmap
-
-- [ ] Subdomain enumeration (subfinder/amass integration)
-- [ ] Expand OWASP probes beyond SQLi/XSS reflection
-- [ ] Local caching of NVD responses across runs
-
----
+<br>
 
 ## ⚠️ Disclaimer
 
-Built for **authorized security testing only** — CTFs, labs, and engagements you have explicit written permission for. Do not run this against systems you don't own or aren't authorized to test.
+Built strictly for **authorized security testing** — CTFs, personal labs, and engagements with explicit written permission. Not intended for use against systems you don't own or aren't authorized to assess.
+
+<br>
 
 ---
 
 <div align="center">
 
-Built by **Rajendra Singh** ([@Raj7l69](https://github.com/Raj7l69)) — B.Tech CSE (Cyber Security), Quantum University
+### 👨‍💻 Rajendra Singh
 
-*If this helped your workflow, a ⭐ on the repo is appreciated.*
+[![GitHub](https://img.shields.io/badge/GitHub-Raj7l69-181717?style=for-the-badge&logo=github)](https://github.com/Raj7l69)
+
+⭐ **If this tool is useful, consider starring the repo.**
 
 </div>
