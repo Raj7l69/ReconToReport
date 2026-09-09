@@ -1,0 +1,5 @@
+# Core
+# (nmap, gobuster, whatweb, enum4linux-ng, smbclient, searchsploit, gowitness
+#  are external system tools, not pip packages — see README for install commands)
+
+md2pdf>=1.0          # optional: only needed if using --export pdf

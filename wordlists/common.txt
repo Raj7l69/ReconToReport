@@ -1,0 +1,15 @@
+admin
+login
+uploads
+backup
+config
+api
+dashboard
+images
+assets
+.git
+.env
+robots.txt
+wp-admin
+test
+dev

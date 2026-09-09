@@ -1,0 +1,5 @@
+# One target per line — IP, CIDR range, or domain
+# Lines starting with # are ignored
+10.10.10.5
+10.10.10.0/28
+scanme.nmap.org
