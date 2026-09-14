@@ -1,5 +1,10 @@
 # Core
 # (nmap, gobuster, whatweb, enum4linux-ng, smbclient, searchsploit, gowitness
-#  are external system tools, not pip packages — see README for install commands)
+#  are external system tools, not pip packages — see INSTALL.md for install commands)
 
-md2pdf>=1.0          # optional: only needed if using --export pdf
+md2pdf>=1.0,<2.0            # optional: only needed if using --export pdf
+python-dotenv>=1.0,<2.0     # loads NVD_API_KEY (and other secrets) from a .env file
+argcomplete>=3.0,<4.0       # optional: enables shell tab-completion for --flags
+
+# Dev/test dependencies (not required to run the tool, only to run the test suite)
+pytest>=8.0,<9.0

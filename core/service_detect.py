@@ -1,7 +1,12 @@
 """
 core/service_detect.py
 Parses nmap XML output into a normalized list of service dicts:
-[{port, protocol, service, product, version, state}, ...]
+[{host, port, protocol, service, product, version, state}, ...]
+
+Each service is tagged with the IP address of the host it was found on.
+This matters for CIDR/multi-host scans, where a single nmap run discovers
+several distinct hosts — without the "host" field, services from different
+machines would be indistinguishable in downstream enumeration/reporting.
 """
 
 import xml.etree.ElementTree as ET
@@ -21,6 +26,9 @@ def parse_nmap_xml(xml_path: Path) -> list:
 
     root = tree.getroot()
     for host in root.findall("host"):
+        addr_el = host.find("address")
+        host_ip = addr_el.get("addr") if addr_el is not None else None
+
         ports_el = host.find("ports")
         if ports_el is None:
             continue
@@ -35,6 +43,7 @@ def parse_nmap_xml(xml_path: Path) -> list:
             version = service_el.get("version", "") if service_el is not None else ""
 
             services.append({
+                "host": host_ip,
                 "port": port_el.get("portid"),
                 "protocol": port_el.get("protocol"),
                 "service": service_name,
@@ -43,5 +52,6 @@ def parse_nmap_xml(xml_path: Path) -> list:
                 "state": "open",
             })
 
-    log.info(f"Parsed {len(services)} open services from {xml_path}")
+    distinct_hosts = len(set(s["host"] for s in services if s.get("host")))
+    log.info(f"Parsed {len(services)} open service(s) across {distinct_hosts} host(s) from {xml_path}")
     return services

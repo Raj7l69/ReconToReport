@@ -1,0 +1,14 @@
+output/
+.checkpoint.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+targets.txt
+.env
+.nvd_cache.json
+*.log
+.pytest_cache/
+.envrc
+.direnv/

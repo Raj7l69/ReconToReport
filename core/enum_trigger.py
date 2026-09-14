@@ -21,7 +21,9 @@ FTP_SERVICES = {"ftp"}
 SSH_SERVICES = {"ssh"}
 
 
-def trigger_enumeration(target: str, services: list, outdir: Path, wordlist: str, screenshot: bool = False) -> dict:
+def trigger_enumeration(target: str, services: list, outdir: Path, wordlist: str,
+                         screenshot: bool = False, interactive: bool = True,
+                         gobuster_preselected: dict = None) -> dict:
     """
     Dispatch to service-specific enumeration modules based on detected services.
     Returns a dict keyed by port -> enum module output, plus a top-level "dns"
@@ -46,7 +48,8 @@ def trigger_enumeration(target: str, services: list, outdir: Path, wordlist: str
                 scheme = "https" if "https" in name or port == "443" else "http"
                 url = f"{scheme}://{target}:{port}"
                 log.info(f"[{target}:{port}] HTTP service detected -> running web enum on {url}")
-                results[port] = run_web_enum(url, outdir, wordlist=wordlist, screenshot=screenshot)
+                results[port] = run_web_enum(url, outdir, wordlist=wordlist, screenshot=screenshot,
+                                              interactive=interactive, gobuster_preselected=gobuster_preselected)
 
             elif name in SMB_SERVICES:
                 log.info(f"[{target}:{port}] SMB service detected -> running SMB enum")

@@ -24,7 +24,7 @@ def grab_banner(target: str, port: str) -> str:
 
 def run_ssh_audit(target: str, port: str, outdir: Path) -> Path:
     out_file = outdir / f"ssh_audit_{port}.txt"
-    cmd = ["ssh-audit", f"{target}:{port}"]
+    cmd = ["ssh-audit", "-n", f"{target}:{port}"]  # -n: disable colored output (keeps the saved .txt readable)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         out_file.write_text(result.stdout)

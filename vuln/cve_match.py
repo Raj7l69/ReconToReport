@@ -8,23 +8,40 @@ Correlates detected service/version strings against real CVE data:
 
 Severity is derived strictly from the CVSS base score returned by NVD —
 no guessing, no "exploit found = High" shortcuts.
+
+Performance: NVD lookups run concurrently via a thread pool, gated by a
+sliding-window RateLimiter so multiple services are queried in parallel
+without exceeding NVD's actual rate limit (5 req/30s unauthenticated,
+~50 req/30s with an API key) — instead of blocking on a sleep() per call
+one at a time. A local cache (utils/cache.py) also skips the network call
+entirely for a product/version already looked up recently.
 """
 
 import subprocess
 import json
-import time
 import urllib.request
 import urllib.parse
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.logger import get_logger
+from utils.cache import NVDCache
+from utils.rate_limiter import RateLimiter
+from vuln.vulners_client import query_vulners_for_cve
+from vuln.risk_enrichment import enrich_cve
 
 log = get_logger("cve_match")
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
-# NVD's public rate limit without an API key is 5 requests / 30s.
-# We sleep between calls to stay under that.
-NVD_REQUEST_DELAY_SECONDS = 6
+# NVD's published rate limits: 5 requests/30s unauthenticated, 50 requests/30s with a key.
+UNAUTH_RATE = (5, 30)
+AUTH_RATE = (50, 30)
+
+# How many NVD queries to run concurrently. Kept modest even with a key —
+# NVD's limit is a rolling window, not a hard concurrency cap, but going
+# too wide risks bursts that still trip the limiter.
+MAX_WORKERS_UNAUTH = 3
+MAX_WORKERS_AUTH = 8
 
 
 def severity_from_cvss(score: float) -> str:
@@ -43,10 +60,6 @@ def severity_from_cvss(score: float) -> str:
 
 
 def _extract_cvss(metrics: dict) -> float:
-    """
-    NVD returns CVSS under one of cvssMetricV31 / cvssMetricV30 / cvssMetricV2.
-    Prefer the newest version available.
-    """
     for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
         entries = metrics.get(key)
         if entries:
@@ -54,19 +67,10 @@ def _extract_cvss(metrics: dict) -> float:
     return None
 
 
-def query_nvd(product: str, version: str, api_key: str = None) -> list:
-    """
-    Query the NVD REST API for CVEs matching a product/version keyword search.
-    Returns a list of {cve_id, cvss_score, severity, description, published}.
-    """
-    if not product:
-        return []
-
+def _query_nvd_uncached(product: str, version: str, api_key: str, rate_limiter: RateLimiter) -> list:
+    """Actual NVD HTTP call, gated by the shared rate limiter. Not called directly — see query_nvd()."""
     keyword = f"{product} {version}".strip()
-    params = {
-        "keywordSearch": keyword,
-        "resultsPerPage": 10,
-    }
+    params = {"keywordSearch": keyword, "resultsPerPage": 10}
     url = f"{NVD_API_URL}?{urllib.parse.urlencode(params)}"
 
     headers = {"User-Agent": "ReconToReport/1.0"}
@@ -74,6 +78,8 @@ def query_nvd(product: str, version: str, api_key: str = None) -> list:
         headers["apiKey"] = api_key
 
     req = urllib.request.Request(url, headers=headers)
+
+    rate_limiter.acquire()  # blocks here until a slot is free, doesn't hold up other threads' turns unfairly
 
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -87,28 +93,37 @@ def query_nvd(product: str, version: str, api_key: str = None) -> list:
     except (json.JSONDecodeError, KeyError) as e:
         log.warning(f"NVD API returned unexpected data for '{keyword}': {e}")
         return []
-    finally:
-        # Respect NVD rate limits regardless of success/failure
-        time.sleep(NVD_REQUEST_DELAY_SECONDS if not api_key else 0.6)
 
     results = []
     for vuln in data.get("vulnerabilities", []):
         cve = vuln.get("cve", {})
-        cve_id = cve.get("id")
         metrics = cve.get("metrics", {})
         score = _extract_cvss(metrics)
-
         descriptions = cve.get("descriptions", [])
         desc_text = next((d["value"] for d in descriptions if d.get("lang") == "en"), "")
 
         results.append({
-            "cve_id": cve_id,
+            "cve_id": cve.get("id"),
             "cvss_score": score,
             "severity": severity_from_cvss(score),
             "description": desc_text[:300],
             "published": cve.get("published"),
         })
 
+    return results
+
+
+def query_nvd(product: str, version: str, api_key: str, rate_limiter: RateLimiter, cache: NVDCache) -> list:
+    """Cache-first NVD lookup. Falls through to the real API call on a cache miss."""
+    if not product:
+        return []
+
+    cached = cache.get(product, version)
+    if cached is not None:
+        return cached
+
+    results = _query_nvd_uncached(product, version, api_key, rate_limiter)
+    cache.set(product, version, results)
     return results
 
 
@@ -132,47 +147,88 @@ def query_searchsploit(product: str, version: str) -> list:
         return []
 
 
-def correlate_cves(services: list, nvd_api_key: str = None) -> list:
-    """
-    For each detected service:
-      1. Query NVD for matching CVEs + real CVSS scores
-      2. Query searchsploit for matching public exploit PoCs
-      3. Assign severity strictly from the highest CVSS score returned by NVD
+def _correlate_one(svc: dict, api_key: str, rate_limiter: RateLimiter, cache: NVDCache,
+                    vulners_api_key: str = None) -> dict:
+    product = svc.get("product", "")
+    version = svc.get("version", "")
 
-    Returns findings sorted highest-severity-first.
+    cves = query_nvd(product, version, api_key, rate_limiter, cache)
+    exploits = query_searchsploit(product, version)
+
+    if cves:
+        scored = [c for c in cves if c["cvss_score"] is not None]
+        top = max(scored, key=lambda c: c["cvss_score"]) if scored else None
+        severity = top["severity"] if top else "Unknown"
+        top_score = top["cvss_score"] if top else None
+    else:
+        top = None
+        severity = "Info"
+        top_score = None
+
+    # Vulners enrichment: only for the highest-severity CVE on this service,
+    # to keep total API calls proportional to services rather than every CVE.
+    vulners_exploits = []
+    risk_enrichment = {"epss": {"score": None, "percentile": None},
+                        "cisa_kev": {"in_kev": False, "date_added": None, "ransomware_use": None}}
+    if top:
+        if vulners_api_key:
+            vulners_exploits = query_vulners_for_cve(top["cve_id"], vulners_api_key)
+        risk_enrichment = enrich_cve(top["cve_id"])  # EPSS + CISA KEV, both free/no-key
+
+    return {
+        "port": svc.get("port"),
+        "service": svc.get("service"),
+        "product": product,
+        "version": version,
+        "cve_matches": cves,
+        "cve_count": len(cves),
+        "top_cvss_score": top_score,
+        "top_cve_id": top["cve_id"] if top else None,
+        "severity": severity,
+        "exploit_count": len(exploits),
+        "exploits": exploits[:5],
+        "vulners_exploits": vulners_exploits,  # [{title, source, url, type}, ...] for the top CVE
+        "epss": risk_enrichment["epss"],        # {"score": 0-1, "percentile": 0-1} for the top CVE
+        "cisa_kev": risk_enrichment["cisa_kev"],  # {"in_kev": bool, "date_added": ..., "ransomware_use": ...}
+    }
+
+
+def correlate_cves(services: list, nvd_api_key: str = None, vulners_api_key: str = None) -> list:
     """
+    For each detected service, correlate against NVD + searchsploit concurrently,
+    and (if a Vulners key is set) enrich the top CVE per service with exploit/PoC
+    links aggregated from 200+ sources (Exploit-DB, Metasploit, GitHub, etc.) —
+    broader coverage than searchsploit's Exploit-DB-only view.
+    Uses a shared rate limiter so parallelism never exceeds NVD's actual rate
+    limit, and a local cache so repeat product/version pairs skip the network
+    call entirely. Returns findings sorted highest-severity-first.
+    """
+    named_services = [s for s in services if s.get("product")]
+    if not named_services:
+        return []
+
+    max_calls, period = AUTH_RATE if nvd_api_key else UNAUTH_RATE
+    rate_limiter = RateLimiter(max_calls=max_calls, period_seconds=period)
+    cache = NVDCache()
+    max_workers = MAX_WORKERS_AUTH if nvd_api_key else MAX_WORKERS_UNAUTH
+
+    log.info(f"Correlating {len(named_services)} service(s) against NVD "
+             f"({'authenticated' if nvd_api_key else 'unauthenticated'} rate limit, "
+             f"{max_workers} concurrent workers)"
+             + (", Vulners exploit enrichment enabled" if vulners_api_key else ""))
+
     findings = []
-
-    for svc in services:
-        product = svc.get("product", "")
-        version = svc.get("version", "")
-        if not product:
-            continue
-
-        cves = query_nvd(product, version, api_key=nvd_api_key)
-        exploits = query_searchsploit(product, version)
-
-        if cves:
-            scored = [c for c in cves if c["cvss_score"] is not None]
-            top = max(scored, key=lambda c: c["cvss_score"]) if scored else None
-            severity = top["severity"] if top else "Unknown"
-            top_score = top["cvss_score"] if top else None
-        else:
-            severity = "Info"  # no CVE match found — nothing to score
-            top_score = None
-
-        findings.append({
-            "port": svc.get("port"),
-            "service": svc.get("service"),
-            "product": product,
-            "version": version,
-            "cve_matches": cves,
-            "cve_count": len(cves),
-            "top_cvss_score": top_score,
-            "severity": severity,
-            "exploit_count": len(exploits),
-            "exploits": exploits[:5],
-        })
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_correlate_one, svc, nvd_api_key, rate_limiter, cache, vulners_api_key): svc
+            for svc in named_services
+        }
+        for future in as_completed(futures):
+            svc = futures[future]
+            try:
+                findings.append(future.result())
+            except Exception as e:
+                log.warning(f"CVE correlation failed for port {svc.get('port')}: {e}")
 
     severity_order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4, "Unknown": 5, "None": 6}
     findings.sort(key=lambda f: severity_order.get(f["severity"], 5))
